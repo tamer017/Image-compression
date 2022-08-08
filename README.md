@@ -6,5 +6,6 @@ The new representation requires overhead storage in the form of a dictionary of 
 #### Example 
 ![Capture](https://user-images.githubusercontent.com/83555471/183440769-4a848167-dae3-4e03-b353-5ff2a2c765f1.PNG)
 The upper four images are the original ones and the lower four are the compressed ones that are represented using 16 colors only.
-Each image consists of 500 \times 500 pixels.
+Each image consists of 500X500 pixels.For the old representation each image needs 500*500*24 = 6000000 bits to be represented however for the new representation each image needs only 500*500*4 + 16*24= 1000384 bits only containing 384 bits for the overhead.
+####Dataset
 Dateset :https://www.kaggle.com/datasets/pointblanc/colors-of-van-gogh?select=color_space.csv
