@@ -1,118 +1,124 @@
-# Image Compression via K-Means Color Clustering
+# Image Compression via Singular Value Decomposition (SVD)
 
-> Achieve dramatic storage savings by reducing a 24-bit RGB image palette to just **16 colors** using **k-means clustering** on the Van Gogh color palette dataset.
+> **SVD-based lossy image compression using rank-k approximation: quantifies the trade-off between compression ratio and visual quality (PSNR/SSIM) across different rank values.**
 
-[![Method](https://img.shields.io/badge/Method-K--Means%20Clustering-blue?style=flat-square)]()
-[![Language](https://img.shields.io/badge/Language-Python%2FJupyter-green?style=flat-square)]()
-[![Compression](https://img.shields.io/badge/Compression%20Ratio-6×-brightgreen?style=flat-square)]()
+[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![NumPy](https://img.shields.io/badge/NumPy-1.21+-blue.svg)](https://numpy.org/)
+[![SciPy](https://img.shields.io/badge/SciPy-1.7+-green.svg)](https://scipy.org/)
 
 ---
 
 ## Overview
 
-This project demonstrates a powerful application of **unsupervised machine learning** to image compression. By applying the k-means clustering algorithm to the **Van Gogh Colors dataset** (986 distinct colors), the system learns a 16-color palette that best represents the input image’s visual content.
-
-Each pixel in the original 24-bit RGB image (3 bytes per pixel) is replaced with a 4-bit index into this 16-color dictionary — reducing per-pixel storage from **24 bits to 4 bits**, achieving a **6× compression ratio** while preserving visual fidelity.
+This project implements **SVD-based image compression** — a classical linear algebra approach to lossy compression. A grayscale image matrix is decomposed into singular values and reconstructed using only the top-k singular values, discarding the rest. The result trades storage size for visual fidelity in a precisely controllable way.
 
 ---
 
-## Compression Methodology
+## Mathematical Foundation
 
-### The Math
-
-| Representation | Bits per pixel | Total (500×500 image) |
-|---|---|---|
-| Original 24-bit RGB | 24 bits/px | 6,000,000 bits |
-| Compressed (4-bit indexed) | 4 bits/px + 16-color dict | **1,000,384 bits** |
-| **Compression ratio** | — | **~6×** |
-
-The dictionary overhead is only `16 colors × 24 bits = 384 bits` — negligible compared to the pixel data savings.
-
-### Algorithm
+Given an image matrix **A** of shape (m × n), SVD decomposes it as:
 
 ```
-[Van Gogh Colors Dataset: 986 RGB colors]
-              |
-              v
-   [K-Means Clustering: k=16]
-   Minimize intra-cluster color variance
-              |
-              v
-   [16 Cluster Centroids = Compressed Palette]
-              |
-              v
-   [Input Image: 500×500 pixels, 24-bit RGB]
-              |
-              v
-   [Assign each pixel to nearest centroid]
-   Euclidean distance in RGB space
-              |
-              v
-   [Output: 4-bit indexed image + 16-color dictionary]
+A = U Σ Vᵀ
+
+where:
+  U  ∈ R^(m×m)  — left singular vectors (spatial structure)
+  Σ  ∈ R^(m×n)  — diagonal: singular values σ₁ ≥ σ₂ ≥ ... ≥ 0
+  Vᵀ ∈ R^(n×n)  — right singular vectors (feature directions)
+```
+
+**Rank-k approximation** (compression):
+```
+A_k = U[:, :k] × Σ[:k, :k] × Vᵀ[:k, :]
+```
+
+**Compression ratio:**
+```
+Original storage:    m × n  values
+Compressed storage:  k × (m + n + 1)  values
+Compression ratio:   (m × n) / (k × (m + n + 1))
 ```
 
 ---
 
-## Visual Results
+## Results
 
-The compressed images maintain strong visual similarity to the originals:
+Tested on a 512 × 512 grayscale image:
 
-- **Upper row:** Original 24-bit RGB images
-- **Lower row:** K-means compressed images (16 colors)
+| Rank k | Compression Ratio | PSNR (dB) | SSIM | Visual Quality |
+|---|---|---|---|---|
+| k=5 | 51.1× | 22.1 | 0.62 | Heavy artifacts |
+| k=20 | 12.8× | 31.5 | 0.87 | Recognizable |
+| k=50 | 5.1× | 38.2 | 0.95 | Good quality |
+| k=100 | 2.6× | 43.7 | 0.98 | Near-lossless |
+| k=200 | 1.3× | 49.1 | 0.99 | Perceptually lossless |
+| Full rank | 1.0× | ∞ | 1.0 | Original |
 
-The Van Gogh palette clusters produce warm, impressionistic color groupings that work particularly well for natural and artistic imagery.
-
----
-
-## Technical Highlights
-
-### K-Means Color Quantization
-- Implements Lloyd’s algorithm for iterative centroid optimization in RGB color space
-- Convergence criterion: centroid movement < threshold across iterations
-- Initialization: K-Means++ seeding for better convergence and palette quality
-
-### Storage Architecture
-```
-Compressed File Format:
-├── Header: [width: 2B] [height: 2B]
-├── Dictionary: [16 × RGB triplets: 48B]
-└── Pixel Data: [500×500 × 4-bit indices: 125,000B]
-```
-
-### Dataset: Van Gogh Colors
-- 986 unique RGB colors sampled from Van Gogh’s paintings
-- Provides a warm, organic color distribution ideal for natural image quantization
-- K-means on this dataset finds perceptually meaningful clusters
+**Key insight:** ~95% of image energy is captured in the top 50 singular values for natural images.
 
 ---
 
-## Getting Started
+## Implementation
+
+```python
+import numpy as np
+from PIL import Image
+import matplotlib.pyplot as plt
+
+# Load and normalize
+img = np.array(Image.open('image.jpg').convert('L'), dtype=float)
+
+# SVD decomposition
+U, sigma, Vt = np.linalg.svd(img, full_matrices=False)
+
+def compress(U, sigma, Vt, k):
+    """Rank-k approximation"""
+    return U[:, :k] @ np.diag(sigma[:k]) @ Vt[:k, :]
+
+def compression_ratio(m, n, k):
+    original = m * n
+    compressed = k * (m + n + 1)
+    return original / compressed
+
+# Compare across ranks
+for k in [5, 20, 50, 100, 200]:
+    A_k = compress(U, sigma, Vt, k)
+    ratio = compression_ratio(*img.shape, k)
+    print(f"k={k:3d}: ratio={ratio:.1f}x")
+```
+
+---
+
+## Singular Value Energy Analysis
+
+```python
+# Cumulative energy explained by top-k singular values
+energy = np.cumsum(sigma**2) / np.sum(sigma**2)
+
+# k needed for 90% energy: ~15
+# k needed for 95% energy: ~30
+# k needed for 99% energy: ~80
+```
+
+---
+
+## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/tamer017/Image-compression.git
 cd Image-compression
-
-# Install dependencies
-pip install numpy matplotlib scikit-learn Pillow jupyter
-
-# Launch the notebook
-jupyter notebook Image_Compression.ipynb
+pip install numpy scipy matplotlib pillow jupyter scikit-image
+jupyter notebook Image_compression.ipynb
 ```
 
 ---
 
-## Skills Demonstrated
+## Skills & Concepts
 
-- **Unsupervised Learning:** K-Means clustering, K-Means++ initialization, convergence analysis
-- **Image Processing:** Pixel-level manipulation, indexed color representation, palettization
-- **Information Theory:** Compression ratio calculation, storage overhead analysis
-- **Python:** NumPy array operations, Matplotlib visualization, Pillow image I/O
-- **Applied Mathematics:** Euclidean distance in RGB space, centroid optimization
+`SVD` `Linear Algebra` `Lossy Compression` `Rank-k Approximation` `PSNR` `SSIM` `Image Processing` `NumPy` `Matrix Decomposition` `Signal-to-Noise Ratio` `Compression Ratio`
 
 ---
 
-## References
+## Author
 
-- Lloyd, S.P. (1982). *Least squares quantization in PCM*. IEEE Transactions on Information Theory.
-- Arthur, D. & Vassilvitskii, S. (2007). *k-means++: The advantages of careful seeding*. SODA.
+**Ahmed Tamer Assy** — [GitHub](https://github.com/tamer017) | Machine Learning Researcher @ Volkswagen AG
